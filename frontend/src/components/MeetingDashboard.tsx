@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   MessageSquare, Radio, Settings, Monitor, MonitorOff, Play, Square, PhoneOff, Users, ChevronRight, Activity, Info,
-  Mic, MicOff, Video, VideoOff, Layout
+  Mic, MicOff, Video, VideoOff, Layout, Wifi, WifiOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMeetingStore } from '../store/useMeetingStore';
+import { useSpeechSocket } from '../hooks/useSpeechSocket';
 import { ParticipantCard } from './ParticipantCard';
 import { SettingsDock } from './SettingsDock';
 
@@ -12,13 +13,21 @@ export const MeetingDashboard: React.FC = () => {
   const {
     theme, isLeftSidebarOpen, toggleLeftSidebar, isRightSidebarOpen, toggleRightSidebar,
     isRecording, toggleRecording,
-    isMuted, toggleMute,
     isVideoOff, toggleVideo,
     isSharingScreen, toggleScreenShare,
     gridDensity,
     participants, updateParticipantSpeaking,
-    transcript, addTranscriptEntry
+    transcript, addTranscriptEntry, clearTranscript
   } = useMeetingStore();
+
+  // Real-time WebSocket transcription (connects on mount, mic starts muted)
+  const {
+    isMicActive,
+    isConnected,
+    transcript: wsTranscript,
+    acousticFeatures,
+    toggleMic,
+  } = useSpeechSocket();
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -75,27 +84,25 @@ export const MeetingDashboard: React.FC = () => {
     startScreen();
   }, [isSharingScreen, toggleScreenShare, screenStream]);
 
-  // Transcripts & Speaking
+  // Scroll transcript to bottom
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [transcript]);
+
+  // Sync WebSocket transcript into the Zustand store
   useEffect(() => {
-    const messages = [
-      "Strategic objectives for the upcoming sprint are clear.",
-      "Let's focus on the stabilization phase for the core engine.",
-      "I've identified a bottleneck in the data ingestion pipeline.",
-      "Can we review the Q1 delivery milestones by tomorrow?",
-      "The latest performance metrics show a 15% improvement.",
-      "Security audit results are in; we need to address the high-priority item.",
-      "Should we consider a microservices architecture for the new module?"
-    ];
-    const interval = setInterval(() => {
-      const p = participants[Math.floor(Math.random() * participants.length)];
-      const msg = messages[Math.floor(Math.random() * messages.length)];
-      updateParticipantSpeaking(p.id, true);
-      addTranscriptEntry({ speakerName: p.name, speakerId: p.id, text: msg });
-      setTimeout(() => updateParticipantSpeaking(p.id, false), 3000);
-    }, 11000);
-    return () => clearInterval(interval);
-  }, [participants, updateParticipantSpeaking, addTranscriptEntry]);
+    if (wsTranscript.length > 0) {
+      const latest = wsTranscript[wsTranscript.length - 1];
+      addTranscriptEntry({
+        speakerName: `Speaker ${latest.speaker_id}`,
+        speakerId: latest.speaker_id,
+        text: latest.text,
+      });
+    }
+  }, [wsTranscript, addTranscriptEntry]);
+
+  // Handle footer Mic button — toggles real mic streaming
+  const handleMicToggle = async () => {
+    await toggleMic();
+  };
 
   // Density Mapping
   const densityStyles = {
@@ -146,11 +153,24 @@ export const MeetingDashboard: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4 px-2">
+            {/* Record session button */}
             <button onClick={toggleRecording} className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all duration-300 ${isRecording ? 'bg-rose-500/10 border-rose-500 text-rose-500 shadow-lg' : 'bg-[var(--bg-surface)] border-[var(--border-color)] text-[var(--text-dim)]'}`}>
               <div className={`w-2 h-2 rounded-full ${isRecording ? 'bg-rose-500 animate-pulse' : 'bg-slate-500'}`} />
               <span className="text-[10px] font-black uppercase tracking-widest hidden xs:inline">{isRecording ? 'STOP' : 'START'} REC</span>
               {isRecording ? <Square size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" />}
             </button>
+
+            {/* WebSocket Connection Status — always visible */}
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all duration-500 ${isConnected ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-400' : 'border-rose-500/30 bg-rose-500/5 text-rose-400 animate-pulse'}`}>
+              {isConnected ? <Wifi size={12} /> : <WifiOff size={12} />}
+              <span className="text-[9px] font-black uppercase tracking-widest hidden sm:inline">{isConnected ? 'LIVE' : 'RECONNECTING...'}</span>
+            </div>
+
+            {/* Mic Status Badge */}
+            <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${isMicActive ? 'text-cyan-400' : 'text-slate-600'}`}>
+              {isMicActive ? <Mic size={12} /> : <MicOff size={12} />}
+              <span className="hidden sm:inline">{isMicActive ? 'MIC ON' : 'MIC OFF'}</span>
+            </div>
 
             <div className="w-px h-6 bg-[var(--border-color)]" />
 
@@ -212,8 +232,9 @@ export const MeetingDashboard: React.FC = () => {
 
         {/* Footer Consoles */}
         <div className="h-20 flex items-center justify-center gap-2 sm:gap-3 bg-[var(--bg-sidebar)] border-t border-[var(--border-color)]">
-          <button onClick={toggleMute} className={`flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-2xl border transition-all ${isMuted ? 'bg-rose-500/10 border-rose-500 text-rose-500' : 'bg-[var(--bg-surface)] border-[var(--border-color)] text-[var(--text-main)] hover:bg-[var(--bg-sidebar)]'}`}>
-            {isMuted ? <MicOff size={18} /> : <Mic size={18} />}
+          {/* MIC BUTTON — Controls real audio streaming to backend */}
+          <button onClick={handleMicToggle} className={`flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-2xl border transition-all ${!isMicActive ? 'bg-rose-500/10 border-rose-500 text-rose-500' : 'bg-[var(--bg-surface)] border-[var(--border-color)] text-[var(--text-main)] hover:bg-[var(--bg-sidebar)]'}`}>
+            {!isMicActive ? <MicOff size={18} /> : <Mic size={18} />}
           </button>
           <button onClick={toggleVideo} className={`flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-2xl border transition-all ${isVideoOff ? 'bg-rose-500/10 border-rose-500 text-rose-500' : 'bg-[var(--bg-surface)] border-[var(--border-color)] text-[var(--text-main)] hover:bg-[var(--bg-sidebar)]'}`}>
             {isVideoOff ? <VideoOff size={18} /> : <Video size={18} />}
@@ -228,32 +249,48 @@ export const MeetingDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Corporate Minutes Sidebar */}
+      {/* Corporate Minutes Sidebar — Live Transcript */}
       <AnimatePresence>
         {isRightSidebarOpen && (
           <motion.aside initial={{ width: 0, opacity: 0 }} animate={{ width: 450, opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="hidden lg:flex flex-col bg-[var(--bg-sidebar)] shadow-2xl overflow-hidden border-l border-white/5">
             <div className="h-16 flex items-center justify-between px-6 border-b border-[var(--border-color)] min-w-[450px]">
-              <div className="flex items-center gap-2 font-black uppercase text-[10px] tracking-widest text-[var(--text-dim)]"><Activity size={14} className="text-[var(--accent-blue)]" /> Board Activity Log</div>
+              <div className="flex items-center gap-2 font-black uppercase text-[10px] tracking-widest text-[var(--text-dim)]"><Activity size={14} className="text-[var(--accent-blue)]" /> Live Transcript</div>
               <button onClick={toggleRightSidebar} className="text-slate-500 hover:text-white p-1 hover:bg-white/5 rounded-lg transition-colors"><ChevronRight size={20} /></button>
             </div>
             <div ref={scrollRef} className="flex-grow p-6 overflow-y-auto space-y-6 custom-scrollbar bg-black/5 min-w-[450px]">
               {transcript.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center opacity-30 gap-4">
-                  <p className="text-[8px] font-black uppercase tracking-[0.3em]">Awaiting Data...</p>
+                  <MicOff size={32} className="opacity-50" />
+                  <p className="text-[8px] font-black uppercase tracking-[0.3em]">Unmute mic to begin transcription...</p>
                 </div>
               ) : (
                 transcript.map((e) => (
-                  <div key={e.id} className="group border-l-2 border-[var(--border-color)] pl-5 py-0.5 hover:border-[var(--accent-blue)] transition-all duration-300">
+                  <motion.div
+                    key={e.id}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="group border-l-2 border-[var(--border-color)] pl-5 py-0.5 hover:border-[var(--accent-blue)] transition-all duration-300"
+                  >
                     <div className="flex items-center gap-3 mb-1.5">
                       <span className={`text-[10px] font-black uppercase tracking-widest ${e.speakerId === 'me' ? 'text-[var(--accent-blue)]' : 'text-[var(--text-dim)]'}`}>{e.speakerName}</span>
                       <span className="text-[9px] text-[var(--text-dim)] opacity-50">{e.timestamp}</span>
                     </div>
                     <p className="text-[13px] leading-relaxed text-[var(--text-main)] font-medium opacity-90">{e.text}</p>
-                  </div>
+                  </motion.div>
                 ))
               )}
             </div>
-            <div className="p-4 bg-black/10 border-t border-[var(--border-color)] min-w-[450px]"><div className="bg-[var(--bg-surface)]/50 border border-white/5 rounded-2xl p-4 flex items-start gap-3"><Info className="text-[var(--accent-blue)] mt-1" size={14} /><p className="text-[11px] text-[var(--text-dim)] italic font-medium leading-relaxed">System Summary: Strategy review session active with real-time minutes generation.</p></div></div>
+            <div className="p-4 bg-black/10 border-t border-[var(--border-color)] min-w-[450px]">
+              <div className="bg-[var(--bg-surface)]/50 border border-white/5 rounded-2xl p-4 flex items-start gap-3">
+                <Info className="text-[var(--accent-blue)] mt-1" size={14} />
+                <p className="text-[11px] text-[var(--text-dim)] italic font-medium leading-relaxed">
+                  {isMicActive 
+                    ? 'Transcribing in real-time via Whisper. Speak naturally.' 
+                    : 'Click the mic button below to start live transcription.'}
+                </p>
+              </div>
+            </div>
           </motion.aside>
         )}
       </AnimatePresence>

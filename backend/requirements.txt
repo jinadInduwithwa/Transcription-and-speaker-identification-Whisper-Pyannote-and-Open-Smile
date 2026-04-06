@@ -1,0 +1,12 @@
+openai-whisper
+torch
+numpy
+pyaudio
+fastapi
+uvicorn[standard]
+websockets
+matplotlib
+soundfile
+librosa
+pyannote.audio
+opensmile
