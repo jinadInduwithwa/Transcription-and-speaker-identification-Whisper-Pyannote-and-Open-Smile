@@ -1,21 +1,20 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import MeetingDashboard from './components/MeetingDashboard';
 import LoginPage from './pages/LoginPage';
-import SignupPage from './pages/SignupPage';
+import MeetingPage from './pages/MeetingPage';
+import { useMeetingStore } from './store/useMeetingStore';
 
 function App() {
-  // Simple auth check simulation
-  const isAuthenticated = true; // For now, allow dashboard access
+  const { user } = useMeetingStore();
+  const isAuthenticated = !!user;
 
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-[#020617] text-slate-100">
+      <div className="min-h-screen bg-[#F4F7FB] text-gray-800">
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
           <Route path="/" element={
-            isAuthenticated ? <MeetingDashboard /> : <Navigate to="/login" />
+            isAuthenticated ? <MeetingPage /> : <Navigate to="/login" />
           } />
           <Route path="*" element={<Navigate to="/login" />} />
         </Routes>

@@ -8,6 +8,8 @@ import sys
 import json
 import asyncio
 import numpy as np
+import random
+import string
 from datetime import datetime
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -33,6 +35,13 @@ app.add_middleware(
 # Load the Whisper model once at startup
 processor: TranscriptionProcessor = None
 
+# Simple In-Memory Meeting Registry
+# In a real app, this would be a database.
+# Structure: { meeting_id: { "passcode": "...", "participants": [] } }
+meetings = {
+    "DEMO": {"passcode": "1234", "participants": []}
+}
+
 @app.on_event("startup")
 async def startup_event():
     global processor
@@ -43,6 +52,50 @@ async def startup_event():
 async def health():
     return {"status": "ok", "model": MODEL_SIZE}
 
+@app.post("/meeting/join")
+async def join_meeting(data: dict):
+    """
+    Validate meeting credentials before allowing the frontend to proceed.
+    JSON Body: { "meeting_id": "...", "passcode": "..." }
+    """
+    meeting_id = data.get("meeting_id", "").upper()
+    passcode = data.get("passcode", "")
+
+    if meeting_id in meetings:
+        if meetings[meeting_id]["passcode"] == passcode:
+            return {"status": "success", "message": "Joined meeting", "meeting_id": meeting_id}
+        return {"status": "error", "message": "Invalid passcode"}
+    
+    # Auto-create if not exists for this prototype? 
+    # Let's be strict for now:
+    return {"status": "error", "message": "Meeting not found"}
+
+@app.post("/meeting/create")
+async def create_meeting(data: dict):
+    """
+    Create a new meeting room with a random ID and passcode.
+    """
+    # Generate random 6-character ID
+    meeting_id = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    # Generate random 4-digit passcode
+    passcode = ''.join(random.choices(string.digits, k=4))
+    
+    meetings[meeting_id] = {
+        "passcode": passcode,
+        "created_at": datetime.now().isoformat(),
+        "scheduled_at": data.get("scheduled_at"),
+        "mode": data.get("mode", "instant"),
+        "creator": data.get("name", "Anonymous"),
+        "participants": []
+    }
+    
+    return {
+        "status": "success", 
+        "meeting_id": meeting_id, 
+        "passcode": passcode,
+        "invite_link": f"http://localhost:5173/login?meetingId={meeting_id}&passcode={passcode}"
+    }
+
 
 # ─── Audio Buffer Config ────────────────────────────────────────
 # We accumulate small PCM packets from the browser into a larger
@@ -52,10 +105,15 @@ BUFFER_DURATION_SEC = CHUNK_LENGTH  # Use same chunk length as CLI mode
 BUFFER_SIZE = SAMPLE_RATE * BUFFER_DURATION_SEC  # samples needed for one chunk
 
 
-@app.websocket("/ws")
-async def websocket_endpoint(ws: WebSocket):
+@app.websocket("/ws/{meeting_id}")
+async def websocket_endpoint(ws: WebSocket, meeting_id: str):
     await ws.accept()
-    print("[WS] Client connected")
+    print(f"[WS] Client connected to meeting: {meeting_id}")
+
+    if meeting_id not in meetings:
+        print(f"[WS] Rejecting: Meeting {meeting_id} does not exist.")
+        await ws.close(code=1008) # Policy Violation
+        return
 
     audio_buffer = np.array([], dtype=np.float32)
     backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

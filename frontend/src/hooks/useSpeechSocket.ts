@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { prepareAudioChunk } from '../utils/audioProcessor';
+import { useMeetingStore } from '../store/useMeetingStore';
 
-const WS_URL = 'ws://localhost:8000/ws';
+const BASE_WS_URL = 'ws://localhost:8000/ws';
 
 export interface TranscriptSegment {
     text: string;
@@ -42,15 +43,19 @@ export const useSpeechSocket = (): UseSpeechSocketReturn => {
     const processorRef = useRef<ScriptProcessorNode | null>(null);
     const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
     const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const { user } = useMeetingStore();
 
     // ─── WebSocket: Connect on mount, auto-reconnect ───────────────
     const connectWebSocket = useCallback(() => {
+        if (!user?.meetingId) return;
+        
         // Don't reconnect if already open or connecting
         if (wsRef.current?.readyState === WebSocket.OPEN || 
             wsRef.current?.readyState === WebSocket.CONNECTING) return;
 
-        console.log('[WS] Connecting to', WS_URL);
-        const ws = new WebSocket(WS_URL);
+        const wsUrl = `${BASE_WS_URL}/${user.meetingId}`;
+        console.log('[WS] Connecting to', wsUrl);
+        const ws = new WebSocket(wsUrl);
         ws.binaryType = 'arraybuffer';
 
         ws.onopen = () => {

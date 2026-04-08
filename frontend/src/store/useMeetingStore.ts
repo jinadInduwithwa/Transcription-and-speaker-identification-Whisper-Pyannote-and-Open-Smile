@@ -19,7 +19,18 @@ export interface TranscriptEntry {
   speakerId: string;
 }
 
+export interface User {
+  name: string;
+  email: string;
+  meetingId: string;
+}
+
 interface MeetingState {
+  // Authentication/Identity
+  user: User | null;
+  setUser: (user: User) => void;
+  logout: () => void;
+
   // Appearance
   theme: ThemeType;
   gridDensity: 'compact' | 'standard' | 'relaxed';
@@ -44,7 +55,7 @@ interface MeetingState {
   isMuted: boolean;
   isVideoOff: boolean;
   isSharingScreen: boolean;
-  toggleMute: () => void;
+  toggleMic: () => void;
   toggleVideo: () => void;
   toggleScreenShare: () => void;
   
@@ -60,24 +71,32 @@ interface MeetingState {
 
 export const useMeetingStore = create<MeetingState>((set) => ({
   // Defaults
-  theme: 'default',
+  user: null,
+  theme: 'light',
   gridDensity: 'standard',
   micVolume: 80,
   speakerVolume: 75,
   isLeftSidebarOpen: true,
   isRightSidebarOpen: true,
   isRecording: false,
-  isMuted: false,
+  isMuted: true,
   isVideoOff: false,
   isSharingScreen: false,
   participants: [
-    { id: 'me', name: 'You (Local)', isSpeaking: false, muted: false },
+    { id: 'me', name: 'Guest', isSpeaking: false, muted: false },
     { id: '1', name: 'Dr. Aris Thorne', isSpeaking: false, muted: false, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aris' },
     { id: '2', name: 'Sarah Chen', isSpeaking: false, muted: false, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah' },
   ],
   transcript: [],
 
   // Actions
+  setUser: (user) => set((state) => ({ 
+    user,
+    participants: state.participants.map(p => 
+      p.id === 'me' ? { ...p, name: user.name } : p
+    )
+  })),
+  logout: () => set({ user: null }),
   setTheme: (theme) => set({ theme }),
   setGridDensity: (gridDensity) => set({ gridDensity }),
   setMicVolume: (micVolume) => set({ micVolume }),
@@ -89,7 +108,7 @@ export const useMeetingStore = create<MeetingState>((set) => ({
   
   toggleRecording: () => set((state) => ({ isRecording: !state.isRecording })),
   
-  toggleMute: () => set((state) => ({ isMuted: !state.isMuted })),
+  toggleMic: () => set((state) => ({ isMuted: !state.isMuted })),
   
   toggleVideo: () => set((state) => ({ isVideoOff: !state.isVideoOff })),
   

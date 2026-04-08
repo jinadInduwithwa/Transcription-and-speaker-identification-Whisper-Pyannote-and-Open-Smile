@@ -1,195 +1,210 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Mail, Lock, ShieldCheck, ArrowRight, Radio, Info } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Video, Globe } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useMeetingStore } from '../store/useMeetingStore';
+
+// Components
+import { JoinForm } from '../components/auth/JoinForm';
+import { HostForm } from '../components/auth/HostForm';
+import { AuthPromo } from '../components/auth/AuthPromo';
+
+const PROMO_IMAGE_JOIN = "/images/meeting_promo_light_1775519945157.png";
+const PROMO_IMAGE_CREATE = "/images/ai_transcription_promo_1775519960749.png";
 
 export const LoginPage: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'join' | 'create'>('join');
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isHumanVerified, setIsHumanVerified] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const navigate = useNavigate();
+  const [meetingId, setMeetingId] = useState('');
+  const [passcode, setPasscode] = useState('');
 
-  const handleLogin = (e: React.FormEvent) => {
+  const [isCreated, setIsCreated] = useState(false);
+  const [inviteDetails, setInviteDetails] = useState<{ id: string, code: string, link: string } | null>(null);
+  const [isCopied, setIsCopied] = useState(false);
+
+  // Host States
+  const [mode, setMode] = useState<'instant' | 'scheduled'>('instant');
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [scheduledTime, setScheduledTime] = useState('');
+
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const { setUser } = useMeetingStore();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const id = searchParams.get('meetingId');
+    const code = searchParams.get('passcode');
+    if (id) setMeetingId(id.toUpperCase());
+    if (code) setPasscode(code);
+  }, [searchParams]);
+
+  const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isHumanVerified) return;
-    
+    if (!name || !email || !meetingId || !passcode) return;
+
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
+    setError(null);
+
+    try {
+      const response = await fetch('http://localhost:8000/meeting/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ meeting_id: meetingId, passcode }),
+      });
+
+      const data = await response.json();
+
+      if (data.status === 'success') {
+        setUser({ name, email, meetingId: data.meeting_id });
+        navigate('/');
+      } else {
+        setError(data.message || 'Access Denied');
+      }
+    } catch (err) {
+      setError('Connection failed. Server offline.');
+    } finally {
       setIsLoading(false);
-      navigate('/');
-    }, 1500);
+    }
+  };
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name || !email) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch('http://localhost:8000/meeting/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          name, 
+          email,
+          mode,
+          scheduled_at: mode === 'scheduled' ? `${scheduledDate}T${scheduledTime}` : null
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.status === 'success') {
+        setInviteDetails({
+          id: data.meeting_id,
+          code: data.passcode,
+          link: data.invite_link
+        });
+        setIsCreated(true);
+        setMeetingId(data.meeting_id);
+        setPasscode(data.passcode);
+      } else {
+        setError('Meeting creation failed.');
+      }
+    } catch (err) {
+      setError('Connection failed.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const copyToClipboard = () => {
+    if (inviteDetails) {
+      navigator.clipboard.writeText(inviteDetails.link);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    }
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#00040a] relative overflow-hidden text-slate-100 selection:bg-cyan-500/30">
-      
-      {/* Superb AI Layered Background */}
-      <div className="absolute inset-0 bg-gradient-mesh opacity-50 pointer-events-none" />
-      <div className="absolute inset-0 neural-mesh pointer-events-none opacity-[0.15]" />
-      
-      {/* Scanning Line Effect */}
-      <div className="absolute top-0 left-0 w-full h-[100px] bg-gradient-to-b from-transparent via-cyan-500/10 to-transparent pointer-events-none animate-scan z-0" />
+    <div className="w-full min-h-screen flex flex-col md:flex-row bg-white selection:bg-blue-100 font-sans overflow-x-hidden">
 
-      {/* Dynamic AI Nodes (Floating Orbs) */}
-      <motion.div 
-        animate={{ 
-          x: [0, 150, -150, 0], 
-          y: [0, -80, 80, 0],
-          scale: [1, 1.2, 0.9, 1]
-        }}
-        transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute top-[15%] left-[15%] w-[40rem] h-[40rem] bg-cyan-600/20 rounded-full ai-glow-orb pointer-events-none blur-[120px]" 
-      />
-      <motion.div 
-        animate={{ 
-          x: [0, -120, 120, 0], 
-          y: [0, 100, -100, 0],
-          scale: [1, 0.8, 1.1, 1]
-        }}
-        transition={{ duration: 25, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute bottom-[10%] right-[15%] w-[45rem] h-[45rem] bg-blue-700/20 rounded-full ai-glow-orb pointer-events-none blur-[140px]" 
-      />
-      
-      {/* Binary Streams (Subtle AI feel) */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-10 binary-stream flex justify-around px-8">
-         {[...Array(6)].map((_, i) => (
-           <motion.div 
-             key={i}
-             className="text-[10px] font-mono text-cyan-500 flex flex-col items-center"
-             initial={{ y: -1000 }}
-             animate={{ y: 1000 }}
-             transition={{ 
-               duration: 10 + Math.random() * 20, 
-               repeat: Infinity, 
-               ease: "linear",
-               delay: i * -5
-             }}
-           >
-             {[...Array(20)].map((_, j) => (
-               <span key={j}>{Math.round(Math.random())}</span>
-             ))}
-           </motion.div>
-         ))}
-      </div>
+      {/* Main Interactive Column */}
+      <div className={`flex-1 flex flex-col justify-center transition-all duration-700 bg-white order-1 ${activeTab === 'create' ? 'md:order-2' : 'md:order-1'}`}>
+        <div className="max-w-[500px] w-full mx-auto px-8 py-12 sm:px-12 sm:py-16 flex flex-col min-h-full">
 
-      {/* Decorative Neural Connectors */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-30">
-         {[...Array(12)].map((_, i) => (
-           <motion.div 
-             key={i}
-             className="absolute w-[3px] h-[3px] bg-cyan-400 rounded-full shadow-[0_0_8px_#22d3ee]"
-             style={{ 
-               top: `${Math.random() * 100}%`, 
-               left: `${Math.random() * 100}%` 
-             }}
-             animate={{ 
-               opacity: [0, 0.8, 0],
-               scale: [0.5, 1.5, 0.5]
-             }}
-             transition={{ 
-               duration: 3 + Math.random() * 4, 
-               repeat: Infinity, 
-               delay: Math.random() * 8 
-             }}
-           />
-         ))}
-      </div>
-
-
-      
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8 }}
-        className="w-full max-w-md px-6 py-12 relative z-10"
-      >
-        <div className="glass p-8 rounded-[2rem] border border-white/10 relative overflow-hidden backdrop-blur-3xl">
-          <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-cyan-500 to-transparent" />
-          
-          {/* Header Internal Title */}
-          <div className="flex flex-col items-center mb-8 pt-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-600 to-blue-700 flex items-center justify-center shadow-xl shadow-cyan-500/10 mb-5">
-              <Radio size={28} className="text-white" />
+          {/* Header Branding */}
+          {/* <div className="flex items-center gap-3 mb-10">
+            <div className="p-2.5 rounded-xl bg-[#0E71EB] text-white shadow-lg shadow-blue-500/20">
+              <Video size={20} className="fill-current" />
             </div>
-            <h1 className="text-2xl font-black tracking-tighter uppercase flex items-center gap-2">
-              Aether<span className="text-cyan-400">Node</span>
-            </h1>
-            <p className="text-slate-500 text-[9px] font-black uppercase tracking-[0.4em] mt-2">Executive Intel Gateway</p>
-          </div>
+            <h1 className="text-lg font-bold text-gray-900 tracking-tight">AI Workspace<span className="text-blue-600">.</span></h1>
+          </div> */}
 
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Terminal ID</label>
-              <div className="relative group">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-cyan-400 transition-colors" size={18} />
-                <input 
-                  type="email" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@enterprise.com" 
-                  className="w-full bg-slate-950/40 border border-white/5 rounded-2xl py-3.5 pl-12 pr-4 outline-none focus:border-cyan-500/50 focus:bg-slate-950/80 transition-all font-medium text-sm"
-                  required
-                />
-              </div>
+          {!isCreated && (
+            <div className="flex bg-gray-100 p-1 rounded-xl mb-10 w-fit">
+              <button
+                onClick={() => { setActiveTab('join'); setError(null); }}
+                className={`px-8 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'join' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Join
+              </button>
+              <button
+                onClick={() => { setActiveTab('create'); setError(null); }}
+                className={`px-8 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'create' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Host
+              </button>
             </div>
+          )}
 
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Access Key</label>
-                <a href="#" className="text-[9px] font-black uppercase tracking-widest text-cyan-500 hover:text-cyan-400 transition-colors">Recover Code</a>
-              </div>
-              <div className="relative group">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-cyan-400 transition-colors" size={18} />
-                <input 
-                  type="password" 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••" 
-                  className="w-full bg-slate-950/40 border border-white/5 rounded-2xl py-3.5 pl-12 pr-4 outline-none focus:border-cyan-500/50 focus:bg-slate-950/80 transition-all font-medium text-sm"
-                  required
-                />
-              </div>
+          {activeTab === 'join' ? (
+            <JoinForm
+              handleJoin={handleJoin}
+              isLoading={isLoading}
+              error={error}
+              meetingId={meetingId}
+              setMeetingId={setMeetingId}
+              passcode={passcode}
+              setPasscode={setPasscode}
+              name={name}
+              setName={setName}
+              email={email}
+              setEmail={setEmail}
+            />
+          ) : (
+            <HostForm 
+                handleCreate={handleCreate}
+                isLoading={isLoading}
+                error={error}
+                name={name}
+                setName={setName}
+                email={email}
+                setEmail={setEmail}
+                isCreated={isCreated}
+                inviteDetails={inviteDetails}
+                isCopied={isCopied}
+                copyToClipboard={copyToClipboard}
+                onReset={() => { setActiveTab('join'); setIsCreated(false); }}
+                mode={mode}
+                setMode={setMode}
+                scheduledDate={scheduledDate}
+                setScheduledDate={setScheduledDate}
+                scheduledTime={scheduledTime}
+                setScheduledTime={setScheduledTime}
+              />
+          )}
+
+          {/* Footer Credits */}
+          <div className="mt-auto pt-10 flex items-center justify-between text-[10px] font-bold text-gray-300 uppercase tracking-widest">
+            <div className="flex gap-4">
+              <span className="text-[#0E71EB] flex items-center gap-1.5"><Globe size={12} /> Global</span>
+              <a href="#" className="hover:text-gray-600 transition-colors">Privacy</a>
             </div>
-
-            {/* Human Verification */}
-            <div className={`p-4 rounded-2xl border transition-all duration-300 flex items-center justify-between cursor-pointer ${isHumanVerified ? 'bg-cyan-500/10 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.1)]' : 'bg-slate-950/40 border-white/5 hover:border-white/10'}`} 
-                 onClick={() => setIsHumanVerified(!isHumanVerified)}>
-              <div className="flex items-center gap-3">
-                <div className={`w-5 h-5 rounded flex items-center justify-center border transition-all ${isHumanVerified ? 'bg-cyan-500 border-cyan-500 shadow-[0_0_10px_#06b6d4]' : 'bg-slate-800 border-white/10'}`}>
-                    {isHumanVerified && <ShieldCheck size={14} className="text-white" />}
-                </div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Biological Audit</span>
-              </div>
-              <Info size={14} className="text-slate-600" />
-            </div>
-
-            <button 
-              type="submit"
-              disabled={isLoading || !isHumanVerified}
-              className={`w-full py-4 rounded-2xl font-black uppercase tracking-[0.2em] text-xs flex items-center justify-center gap-3 transition-all active:scale-[0.98] ${
-                isLoading || !isHumanVerified 
-                ? 'bg-slate-900 text-slate-700 cursor-not-allowed' 
-                : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:shadow-[0_0_20px_rgba(6,182,212,0.3)] text-white'
-              }`}
-            >
-              {isLoading ? (
-                <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-              ) : (
-                <>Establish Uplink <ArrowRight size={16} /></>
-              )}
-            </button>
-          </form>
-
-          <div className="mt-8 text-center pt-6 border-t border-white/5">
-             <span className="text-slate-600 text-[10px] uppercase font-black tracking-widest">New Operator? </span>
-             <Link to="/signup" className="text-cyan-500 text-[10px] uppercase font-black tracking-widest hover:text-white transition-colors">Register Profile</Link>
+            <span className="opacity-40">v4.2 PRO</span>
           </div>
         </div>
-        
-        <p className="mt-12 text-center text-[8px] font-bold text-slate-800 uppercase tracking-[0.5em] opacity-50">Intelligence Core v4.2 • Secure Encryption Enabled</p>
-      </motion.div>
+      </div>
+
+      {/* Visual Column */}
+      <AuthPromo
+        activeTab={activeTab}
+        joinImage={PROMO_IMAGE_JOIN}
+        createImage={PROMO_IMAGE_CREATE}
+      />
+
     </div>
   );
 };
