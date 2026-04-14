@@ -8,6 +8,9 @@ import { JoinForm } from '../components/auth/JoinForm';
 import { HostForm } from '../components/auth/HostForm';
 import { AuthPromo } from '../components/auth/AuthPromo';
 
+// API
+import { meetingApi } from '../api/meetingApi';
+
 const PROMO_IMAGE_JOIN = "/images/meeting_promo_light_1775519945157.png";
 const PROMO_IMAGE_CREATE = "/images/ai_transcription_promo_1775519960749.png";
 
@@ -49,16 +52,10 @@ export const LoginPage: React.FC = () => {
     setError(null);
 
     try {
-      const response = await fetch('http://localhost:8000/meeting/join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ meeting_id: meetingId, passcode }),
-      });
-
-      const data = await response.json();
+      const data = await meetingApi.joinMeeting(meetingId, passcode);
 
       if (data.status === 'success') {
-        setUser({ name, email, meetingId: data.meeting_id });
+        setUser({ name, email, meetingId: meetingId });
         navigate('/');
       } else {
         setError(data.message || 'Access Denied');
@@ -78,18 +75,8 @@ export const LoginPage: React.FC = () => {
     setError(null);
 
     try {
-      const response = await fetch('http://localhost:8000/meeting/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name, 
-          email,
-          mode,
-          scheduled_at: mode === 'scheduled' ? `${scheduledDate}T${scheduledTime}` : null
-        }),
-      });
-
-      const data = await response.json();
+      const scheduledAt = mode === 'scheduled' ? `${scheduledDate}T${scheduledTime}` : undefined;
+      const data = await meetingApi.createMeeting(name, mode, scheduledAt);
 
       if (data.status === 'success') {
         setInviteDetails({

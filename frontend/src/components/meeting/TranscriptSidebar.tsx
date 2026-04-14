@@ -1,14 +1,15 @@
 import React, { useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, MoreVertical, Mic, Send } from 'lucide-react';
+import { MessageSquare, MoreVertical, Mic, Send, Activity } from 'lucide-react';
 import { TranscriptEntry } from '../../store/useMeetingStore';
 
 interface TranscriptSidebarProps {
     transcript: TranscriptEntry[];
     clearTranscript: () => void;
+    acousticFeatures?: { pitch: number; energy: number };
 }
 
-export const TranscriptSidebar: React.FC<TranscriptSidebarProps> = ({ transcript, clearTranscript }) => {
+export const TranscriptSidebar: React.FC<TranscriptSidebarProps> = ({ transcript, clearTranscript, acousticFeatures }) => {
     const transcriptEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -16,7 +17,7 @@ export const TranscriptSidebar: React.FC<TranscriptSidebarProps> = ({ transcript
     }, [transcript]);
 
     return (
-        <aside className="hidden lg:flex w-80 xl:w-96 flex-col gap-4">
+        <aside className="w-full h-full lg:w-80 xl:w-96 flex flex-col gap-4">
             <div className="flex-grow bg-white rounded-3xl border border-gray-200 flex flex-col overflow-hidden shadow-sm">
                 <div className="p-5 border-b border-gray-100 flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -34,6 +35,42 @@ export const TranscriptSidebar: React.FC<TranscriptSidebarProps> = ({ transcript
                     </button>
                 </div>
 
+                {/* Integrated Acoustics Analysis */}
+                {acousticFeatures && (
+                    <div className="mx-5 mt-4 p-4 rounded-2xl bg-gray-50 border border-gray-100 space-y-3">
+                        <div className="flex items-center gap-2 mb-1">
+                            <Activity size={14} className="text-blue-500" />
+                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Acoustics Live</span>
+                        </div>
+                        <div className="space-y-3">
+                            <div>
+                                <div className="flex justify-between items-center mb-1">
+                                    <span className="text-[9px] font-bold text-gray-400 uppercase">Pitch</span>
+                                    <span className="text-[10px] font-bold text-blue-600">{Math.round(acousticFeatures.pitch)}Hz</span>
+                                </div>
+                                <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
+                                    <div 
+                                        className="h-full bg-blue-500 transition-all duration-300" 
+                                        style={{ width: `${Math.min(100, (acousticFeatures.pitch / 150) * 100)}%` }} 
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <div className="flex justify-between items-center mb-1">
+                                    <span className="text-[9px] font-bold text-gray-400 uppercase">Energy</span>
+                                    <span className="text-[10px] font-bold text-purple-600">{Math.round(acousticFeatures.energy)}dB</span>
+                                </div>
+                                <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
+                                    <div 
+                                        className="h-full bg-purple-500 transition-all duration-300" 
+                                        style={{ width: `${Math.min(100, acousticFeatures.energy * 2)}%` }} 
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <div className="flex-grow overflow-y-auto p-5 space-y-6 custom-scrollbar bg-white/50">
                     <AnimatePresence initial={false}>
                         {transcript.length === 0 ? (
@@ -43,18 +80,21 @@ export const TranscriptSidebar: React.FC<TranscriptSidebarProps> = ({ transcript
                                 <p className="text-[10px] text-gray-400 mt-2">Unmute your microphone to start the live transcription stream.</p>
                             </div>
                         ) : (
-                            transcript.map((entry, idx) => (
+                            transcript.map((entry) => (
                                 <motion.div
-                                    key={idx}
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
+                                    key={entry.id}
+                                    initial={{ opacity: 0, x: 20 }}
+                                    animate={{ opacity: 1, x: 0 }}
                                     className="space-y-2 group text-left"
                                 >
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-blue-600">{entry.speakerId}</span>
-                                        <span className="text-[9px] text-gray-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">{entry.timestamp}</span>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-gray-900">{entry.speakerName}</span>
+                                        </div>
+                                        <span className="text-[9px] text-gray-400 font-bold tabular-nums">{entry.timestamp}</span>
                                     </div>
-                                    <p className="text-sm text-gray-700 leading-relaxed font-medium bg-gray-50 p-3 rounded-2xl border border-gray-100 shadow-sm">{entry.text}</p>
+                                    <p className="text-sm text-gray-800 leading-relaxed font-medium bg-gray-50 p-4 rounded-2xl border border-gray-100 shadow-sm group-hover:bg-white transition-colors">{entry.text}</p>
                                 </motion.div>
                             ))
                         )}

@@ -2,7 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { prepareAudioChunk } from '../utils/audioProcessor';
 import { useMeetingStore } from '../store/useMeetingStore';
 
-const BASE_WS_URL = 'ws://localhost:8000/ws';
+import { WS_BASE_URL } from '../api/config';
+
+const BASE_WS_URL = `${WS_BASE_URL}/ws`;
 
 export interface TranscriptSegment {
     text: string;
@@ -18,9 +20,9 @@ export interface AcousticFeatures {
 export interface UseSpeechSocketReturn {
     isMicActive: boolean;
     isConnected: boolean;
-    transcript: TranscriptSegment[];
     acousticFeatures: AcousticFeatures;
     toggleMic: () => Promise<void>;
+    sendChat: (text: string) => void;
 }
 
 /**
@@ -33,7 +35,6 @@ export interface UseSpeechSocketReturn {
  */
 export const useSpeechSocket = (): UseSpeechSocketReturn => {
     const [isMicActive, setIsMicActive] = useState<boolean>(false);
-    const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
     const [acousticFeatures, setAcousticFeatures] = useState<AcousticFeatures>({ pitch: 0, energy: 0 });
     const [isConnected, setIsConnected] = useState<boolean>(false);
     
@@ -43,17 +44,29 @@ export const useSpeechSocket = (): UseSpeechSocketReturn => {
     const processorRef = useRef<ScriptProcessorNode | null>(null);
     const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
     const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const { user } = useMeetingStore();
+    const lastMeetingIdRef = useRef<string | null>(null);
+    const heartbeatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const { user, addTranscriptEntry, isMuted, setParticipants, addChatMessage } = useMeetingStore();
 
     // ─── WebSocket: Connect on mount, auto-reconnect ───────────────
     const connectWebSocket = useCallback(() => {
         if (!user?.meetingId) return;
         
+        // If meeting ID changed, force close old connection
+        if (lastMeetingIdRef.current !== user.meetingId) {
+            console.log('[WS] Meeting ID changed, closing old connection');
+            if (wsRef.current) {
+                wsRef.current.close();
+                wsRef.current = null;
+            }
+            lastMeetingIdRef.current = user.meetingId;
+        }
+
         // Don't reconnect if already open or connecting
         if (wsRef.current?.readyState === WebSocket.OPEN || 
             wsRef.current?.readyState === WebSocket.CONNECTING) return;
 
-        const wsUrl = `${BASE_WS_URL}/${user.meetingId}`;
+        const wsUrl = `${BASE_WS_URL}/${user.meetingId}?name=${encodeURIComponent(user.name)}`;
         console.log('[WS] Connecting to', wsUrl);
         const ws = new WebSocket(wsUrl);
         ws.binaryType = 'arraybuffer';
@@ -61,11 +74,20 @@ export const useSpeechSocket = (): UseSpeechSocketReturn => {
         ws.onopen = () => {
             console.log('[WS] ✅ Connected');
             setIsConnected(true);
+            
+            // Start heartbeat to prevent connection timeout
+            heartbeatTimerRef.current = setInterval(() => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'ping' }));
+                }
+            }, 30000); // 30 seconds
         };
 
         ws.onclose = () => {
             console.log('[WS] Disconnected — will retry in 3s');
             setIsConnected(false);
+            if (heartbeatTimerRef.current) clearInterval(heartbeatTimerRef.current);
+            
             // Auto-reconnect after 3 seconds
             reconnectTimerRef.current = setTimeout(() => {
                 connectWebSocket();
@@ -78,16 +100,34 @@ export const useSpeechSocket = (): UseSpeechSocketReturn => {
         
         ws.onmessage = (event) => {
             try {
-                const data = JSON.parse(event.data);
-                if (data.text) {
-                    setTranscript((prev) => [...prev, {
-                        text: data.text,
-                        speaker_id: data.speaker_id || 'unknown',
-                        timestamp: data.timestamp || new Date().toLocaleTimeString(),
-                    }]);
-                }
-                if (data.acoustic_features) {
-                    setAcousticFeatures(data.acoustic_features);
+                const message = JSON.parse(event.data);
+                const { type, data } = message;
+
+                switch (type) {
+                    case 'participants':
+                        setParticipants(data);
+                        break;
+                    case 'transcription':
+                        addTranscriptEntry({
+                            text: data.text,
+                            speakerId: data.speaker_id,
+                            speakerName: data.speaker_name,
+                        });
+                        break;
+                    case 'acoustics':
+                        setAcousticFeatures(data);
+                        break;
+                    case 'chat':
+                        addChatMessage({
+                            sender: data.sender,
+                            text: data.text,
+                            timestamp: data.timestamp,
+                            isMe: data.sender === user?.name,
+                        });
+                        break;
+                    case 'error':
+                        console.error('[WS] Backend error:', data.message);
+                        break;
                 }
             } catch (err) {
                 console.error('[WS] Failed to parse message:', err);
@@ -95,7 +135,7 @@ export const useSpeechSocket = (): UseSpeechSocketReturn => {
         };
 
         wsRef.current = ws;
-    }, []);
+    }, [user?.meetingId, addTranscriptEntry]);
 
     // Connect WebSocket immediately on mount
     useEffect(() => {
@@ -182,6 +222,15 @@ export const useSpeechSocket = (): UseSpeechSocketReturn => {
         }
     }, [isMicActive, startMic, stopMic]);
 
+    // Sync hardware mic with global isMuted state
+    useEffect(() => {
+        if (!isMuted) {
+            startMic();
+        } else {
+            stopMic();
+        }
+    }, [isMuted, startMic, stopMic]);
+
     // Cleanup mic on unmount
     useEffect(() => {
         return () => {
@@ -189,11 +238,24 @@ export const useSpeechSocket = (): UseSpeechSocketReturn => {
         };
     }, [stopMic]);
 
+    const sendChat = useCallback((text: string) => {
+        if (!text.trim()) return;
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ 
+                type: 'chat', 
+                text: text.trim(),
+                sender: user?.name 
+            }));
+        } else {
+            console.warn('[Chat] WebSocket not open, cannot send message');
+        }
+    }, [user?.name]);
+
     return {
-        isMicActive,
+        isMicActive: !isMuted,
         isConnected,
-        transcript,
         acousticFeatures,
-        toggleMic,
+        toggleMic: async () => { /* Now handled by store toggle */ },
+        sendChat,
     };
 };

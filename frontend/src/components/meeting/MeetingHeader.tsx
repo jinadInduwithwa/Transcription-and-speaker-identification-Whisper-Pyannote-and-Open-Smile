@@ -5,19 +5,20 @@ interface MeetingHeaderProps {
     userName: string | undefined;
     meetingId: string | undefined;
     isConnected: boolean;
+    duration: string;
 }
 
-export const MeetingHeader: React.FC<MeetingHeaderProps> = ({ userName, meetingId, isConnected }) => {
+export const MeetingHeader: React.FC<MeetingHeaderProps> = ({ userName, meetingId, isConnected, duration }) => {
     return (
         <header className="h-16 sm:h-20 bg-white border-b border-gray-200 flex items-center justify-between px-4 sm:px-8 z-10 shadow-sm">
             <div className="flex items-center gap-4">
                 <div className="flex flex-col">
-                    <h1 className="font-bold text-gray-900 truncate max-w-[200px] leading-tight flex items-center gap-2">
+                    <h1 className="font-bold text-gray-900 truncate max-w-[150px] sm:max-w-[200px] leading-tight flex items-center gap-2">
                         {userName || 'Meeting Assistant'}
-                        <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] uppercase font-black">AI Host</span>
+                        <span className="hidden xs:inline px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] uppercase font-black">AI Host</span>
                     </h1>
-                    <div className="flex items-center gap-2 text-xs text-gray-400 font-medium">
-                        <span className="flex items-center gap-1"><Clock size={12} /> 00:42:15</span>
+                    <div className="flex items-center gap-2 text-[10px] sm:text-xs text-gray-400 font-medium">
+                        <span className="flex items-center gap-1 font-mono tracking-wider text-blue-500/80"><Clock size={12} /> {duration}</span>
                         <span>•</span>
                         <span className="text-blue-500 font-bold uppercase text-[10px] tracking-widest">{meetingId || 'DEMO'}</span>
                     </div>

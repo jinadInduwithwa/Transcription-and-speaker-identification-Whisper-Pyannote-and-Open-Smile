@@ -25,6 +25,14 @@ export interface User {
   meetingId: string;
 }
 
+export interface ChatMessage {
+  id: string;
+  sender: string;
+  text: string;
+  timestamp: string;
+  isMe: boolean;
+}
+
 interface MeetingState {
   // Authentication/Identity
   user: User | null;
@@ -62,11 +70,17 @@ interface MeetingState {
   // Participants
   participants: Participant[];
   updateParticipantSpeaking: (id: string, isSpeaking: boolean) => void;
+  setParticipants: (participants: Participant[]) => void;
   
   // Transcription
   transcript: TranscriptEntry[];
   addTranscriptEntry: (entry: Omit<TranscriptEntry, 'id' | 'timestamp'>) => void;
   clearTranscript: () => void;
+
+  // Chat
+  chatMessages: ChatMessage[];
+  addChatMessage: (msg: Omit<ChatMessage, 'id'>) => void;
+  clearChat: () => void;
 }
 
 export const useMeetingStore = create<MeetingState>((set) => ({
@@ -82,12 +96,9 @@ export const useMeetingStore = create<MeetingState>((set) => ({
   isMuted: true,
   isVideoOff: false,
   isSharingScreen: false,
-  participants: [
-    { id: 'me', name: 'Guest', isSpeaking: false, muted: false },
-    { id: '1', name: 'Dr. Aris Thorne', isSpeaking: false, muted: false, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aris' },
-    { id: '2', name: 'Sarah Chen', isSpeaking: false, muted: false, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah' },
-  ],
+  participants: [],
   transcript: [],
+  chatMessages: [],
 
   // Actions
   setUser: (user) => set((state) => ({ 
@@ -119,21 +130,45 @@ export const useMeetingStore = create<MeetingState>((set) => ({
       p.id === id ? { ...p, isSpeaking } : p
     )
   })),
-
-  addTranscriptEntry: (entry) => set((state) => ({
-    transcript: [
-      ...state.transcript,
-      {
-        ...entry,
-        id: Math.random().toString(36).substring(7),
-        timestamp: new Date().toLocaleTimeString([], { 
-          hour: '2-digit', 
-          minute: '2-digit', 
-          second: '2-digit' 
-        })
-      }
-    ].slice(-100) // Keep last 100 entries
+  setParticipants: (participants) => set((state) => ({ 
+    participants: participants.map(p => ({
+      ...p,
+      // Mark as 'me' if the name matches the logged in user
+      id: p.name === state.user?.name ? 'me' : p.id
+    }))
   })),
 
+  addTranscriptEntry: (entry) => set((state) => {
+    // Simple de-duplication: ignore if same text as last entry from same speaker
+    const lastEntry = state.transcript[state.transcript.length - 1];
+    if (lastEntry && lastEntry.text === entry.text && lastEntry.speakerId === entry.speakerId) {
+      return state;
+    }
+
+    return {
+      transcript: [
+        ...state.transcript,
+        {
+          ...entry,
+          id: Math.random().toString(36).substring(7),
+          timestamp: new Date().toLocaleTimeString([], { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit' 
+          })
+        }
+      ].slice(-100) // Keep last 100 entries
+    };
+  }),
+
   clearTranscript: () => set({ transcript: [] }),
+
+  addChatMessage: (msg) => set((state) => ({
+    chatMessages: [
+      ...state.chatMessages,
+      { ...msg, id: Math.random().toString(36).substring(7) }
+    ].slice(-200) // Keep last 200 messages
+  })),
+
+  clearChat: () => set({ chatMessages: [] }),
 }));

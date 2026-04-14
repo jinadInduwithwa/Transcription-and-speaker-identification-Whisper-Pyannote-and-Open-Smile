@@ -41,18 +41,18 @@ export const ControlBar: React.FC<ControlBarProps> = ({ isMuted, toggleMic, isVi
                     </button>
                 </div>
 
-                <div className="w-px h-10 bg-gray-200 mx-1 xs:mx-2" />
+                <div className="w-px h-10 bg-gray-200 mx-1 xs:mx-2 hidden sm:block" />
                 
                 <button 
                     onClick={logout}
-                    className="px-6 sm:px-10 h-14 sm:h-16 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-rose-600/20 transition-all active:scale-95"
+                    className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-4 sm:px-8 h-12 sm:h-16 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white transition-all active:scale-95 shadow-lg shadow-rose-600/20"
                 >
-                    <PhoneOff size={20} />
-                    <span className="hidden xs:inline">Leave Room</span>
+                    <PhoneOff size={18} />
+                    <span className="text-[8px] sm:text-[10px] font-black uppercase tracking-widest whitespace-nowrap">Leave</span>
                 </button>
             </div>
 
-            <div className="absolute right-6 sm:right-10 flex items-center gap-3">
+            <div className="absolute right-6 sm:right-10 items-center gap-3 hidden md:flex">
                 <button className="p-3 rounded-full bg-gray-50 text-gray-400 hover:text-gray-600 transition-colors border border-gray-100"><Maximize2 size={18} /></button>
             </div>
         </footer>
